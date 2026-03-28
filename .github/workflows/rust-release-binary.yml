@@ -48,10 +48,20 @@ jobs:
 
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
+      - name: Resolve effective tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ (github.event_name == 'workflow_dispatch' && inputs.tag != '') && inputs.tag || github.ref }}
+          ref: ${{ steps.tag.outputs.value }}
 
       - name: Validate tag input
         if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
@@ -72,7 +82,7 @@ jobs:
         uses: requarks/changelog-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+          tag: ${{ steps.tag.outputs.value }}
           writeToFile: true
           changelogFilePath: "CHANGELOG.md"
 
@@ -108,5 +118,5 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           branch: master
-          commit_message: 'docs: update CHANGELOG.md for ${{ inputs.tag != '' && inputs.tag || github.ref_name }} [skip ci]'
+          commit_message: "docs: update CHANGELOG.md for ${{ steps.tag.outputs.value }} [skip ci]"
           file_pattern: CHANGELOG.md

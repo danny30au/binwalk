@@ -4,6 +4,18 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v1.2.3). Required if publishing a release.'
+        required: false
+        default: ''
+      publish_release:
+        description: 'Publish a GitHub release after building'
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   release:
     name: Release - ${{ matrix.platform.os-name }}
@@ -33,19 +45,21 @@ jobs:
           - os-name: Windows-aarch64
             runs-on: windows-11-arm
             target: aarch64-pc-windows-msvc
-    
+
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
       - name: Update CHANGELOG
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         id: changelog
         uses: requarks/changelog-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          tag: ${{ inputs.tag || github.ref_name }}
           writeToFile: true
           changelogFilePath: "CHANGELOG.md"
 
@@ -58,13 +72,13 @@ jobs:
           strip: true
 
       - name: Publish artifacts and release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         uses: houseabsolute/actions-rust-release@v0
         with:
           executable-name: binwalk
           target: ${{ matrix.platform.target }}
           release-tag-prefix: v
-          changes-file: "CHANGELOG.md"          
+          changes-file: "CHANGELOG.md"
           action-gh-release-parameters: |
             {
               "draft": false,
@@ -75,12 +89,11 @@ jobs:
               "body_path": "CHANGELOG.md",
               "token": "${{ secrets.GITHUB_TOKEN }}"
             }
-      
+
       - name: Commit CHANGELOG.md
-        if: startsWith(github.ref, 'refs/tags/') && matrix.platform.os-name == 'Linux-x86_64'
+        if: (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)) && matrix.platform.os-name == 'Linux-x86_64'
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           branch: master
-          commit_message: 'docs: update CHANGELOG.md for ${{ github.ref_name }} [skip ci]'
+          commit_message: 'docs: update CHANGELOG.md for ${{ inputs.tag || github.ref_name }} [skip ci]'
           file_pattern: CHANGELOG.md
-        
